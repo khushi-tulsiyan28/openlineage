@@ -27,7 +27,7 @@ openlineage/
 │   └── phase2/                     # Phase 2 configurations (future)
 ├── integrations/                   # OpenLineage integrations
 │   ├── mlflow/                     # MLflow integration
-│   │   └── mlflow_openlineage_integration.py
+│   │   └── mlflow_openlineage_integration.py  #needs to be an entire application and not a .py file because it will be a model-catalogue like huggingface
 │   ├── feast/                      # Feast integration
 │   │   └── feast_openlineage_integration.py
 │   └── modelcatalogue/             # ModelCatalogue integration
