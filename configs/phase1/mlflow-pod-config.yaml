@@ -1,0 +1,255 @@
+# MLflow Pod Configuration for Phase 1
+# Kubernetes-style configuration for containerized ML experiments
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mlflow-pod-config
+  namespace: ml-platform
+data:
+  # MLflow Configuration
+  MLFLOW_TRACKING_URI: "http://api-gateway:8080/mlflow"
+  MLFLOW_DEFAULT_ARTIFACT_ROOT: "s3://mlflow-artifacts"
+  MLFLOW_S3_ENDPOINT_URL: "https://s3.us-west-2.amazonaws.com"
+  AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID}"
+  AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY}"
+  
+  # Feast Configuration
+  FEAST_REGISTRY_PATH: "postgresql://feast:${FEAST_DB_PASSWORD}@postgres:5432/feast_registry"
+  FEAST_ONLINE_STORE_CONNECTION_STRING: "redis://redis:6379"
+  
+  # ModelCatalogue Configuration
+  MODELCATALOGUE_API_URL: "http://api-gateway:8080/modelcatalogue"
+  MODELCATALOGUE_CLIENT_ID: "mlflow-pod"
+  MODELCATALOGUE_CLIENT_SECRET: "${MODELCATALOGUE_CLIENT_SECRET}"
+  
+  # OAuth Configuration
+  OAUTH_PROVIDER_URL: "http://api-gateway:8080/oauth"
+  OAUTH_CLIENT_ID: "mlflow-pod"
+  OAUTH_CLIENT_SECRET: "${MLFLOW_POD_CLIENT_SECRET}"
+  
+  # Python Configuration
+  PYTHONPATH: "/app:/app/integrations"
+  PYTHONUNBUFFERED: "1"
+  
+  # Logging Configuration
+  LOG_LEVEL: "INFO"
+  LOG_FORMAT: "json"
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mlflow-pod-secrets
+  namespace: ml-platform
+type: Opaque
+data:
+  # Base64 encoded secrets
+  FEAST_DB_PASSWORD: "${FEAST_DB_PASSWORD_B64}"
+  AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID_B64}"
+  AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY_B64}"
+  MODELCATALOGUE_CLIENT_SECRET: "${MODELCATALOGUE_CLIENT_SECRET_B64}"
+  MLFLOW_POD_CLIENT_SECRET: "${MLFLOW_POD_CLIENT_SECRET_B64}"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mlflow-pod
+  namespace: ml-platform
+  labels:
+    app: mlflow-pod
+    version: v1
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: mlflow-pod
+  template:
+    metadata:
+      labels:
+        app: mlflow-pod
+        version: v1
+    spec:
+      serviceAccountName: mlflow-pod-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+      - name: mlflow-pod
+        image: mlflow-pod:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8888
+          name: jupyter
+        - containerPort: 5000
+          name: mlflow
+        env:
+        - name: MLFLOW_TRACKING_URI
+          valueFrom:
+            configMapKeyRef:
+              name: mlflow-pod-config
+              key: MLFLOW_TRACKING_URI
+        - name: MLFLOW_DEFAULT_ARTIFACT_ROOT
+          valueFrom:
+            configMapKeyRef:
+              name: mlflow-pod-config
+              key: MLFLOW_DEFAULT_ARTIFACT_ROOT
+        - name: FEAST_REGISTRY_PATH
+          valueFrom:
+            configMapKeyRef:
+              name: mlflow-pod-config
+              key: FEAST_REGISTRY_PATH
+        - name: FEAST_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mlflow-pod-secrets
+              key: FEAST_DB_PASSWORD
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: mlflow-pod-secrets
+              key: AWS_ACCESS_KEY_ID
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: mlflow-pod-secrets
+              key: AWS_SECRET_ACCESS_KEY
+        - name: MODELCATALOGUE_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: mlflow-pod-secrets
+              key: MODELCATALOGUE_CLIENT_SECRET
+        - name: MLFLOW_POD_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: mlflow-pod-secrets
+              key: MLFLOW_POD_CLIENT_SECRET
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1000m"
+            ephemeral-storage: "10Gi"
+          limits:
+            memory: "8Gi"
+            cpu: "4000m"
+            ephemeral-storage: "50Gi"
+        volumeMounts:
+        - name: mlflow-pod-storage
+          mountPath: /app/data
+        - name: mlflow-pod-logs
+          mountPath: /app/logs
+        - name: mlflow-pod-config
+          mountPath: /app/config
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8888
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8888
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+      volumes:
+      - name: mlflow-pod-storage
+        persistentVolumeClaim:
+          claimName: mlflow-pod-pvc
+      - name: mlflow-pod-logs
+        emptyDir: {}
+      - name: mlflow-pod-config
+        configMap:
+          name: mlflow-pod-config
+      nodeSelector:
+        node-type: "ml-workload"
+      tolerations:
+      - key: "ml-workload"
+        operator: "Equal"
+        value: "true"
+        effect: "NoSchedule"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mlflow-pod-service
+  namespace: ml-platform
+  labels:
+    app: mlflow-pod
+spec:
+  selector:
+    app: mlflow-pod
+  ports:
+  - name: jupyter
+    port: 8888
+    targetPort: 8888
+    protocol: TCP
+  - name: mlflow
+    port: 5000
+    targetPort: 5000
+    protocol: TCP
+  type: ClusterIP
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mlflow-pod-pvc
+  namespace: ml-platform
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Gi
+  storageClassName: fast-ssd
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: mlflow-pod-sa
+  namespace: ml-platform
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: ml-platform
+  name: mlflow-pod-role
+rules:
+- apiGroups: [""]
+  resources: ["pods", "services", "configmaps", "secrets"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "list", "watch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: mlflow-pod-rolebinding
+  namespace: ml-platform
+subjects:
+- kind: ServiceAccount
+  name: mlflow-pod-sa
+  namespace: ml-platform
+roleRef:
+  kind: Role
+  name: mlflow-pod-role
+  apiGroup: rbac.authorization.k8s.io
+

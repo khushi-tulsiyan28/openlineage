@@ -1,0 +1,150 @@
+# API Gateway Configuration for Phase 1
+# Production-grade OAuth authentication and service routing
+
+# Server Configuration
+server:
+  host: "0.0.0.0"
+  port: 8080
+  workers: 4
+  timeout: 30
+  keep_alive: true
+  
+# OAuth Configuration
+oauth:
+  provider: "keycloak"  # or "auth0", "okta", "azure-ad"
+  issuer_url: "https://auth.yourcompany.com/realms/ml-platform"
+  client_id: "api-gateway"
+  client_secret: "${API_GATEWAY_CLIENT_SECRET}"
+  scopes:
+    - "openid"
+    - "profile"
+    - "email"
+    - "mlflow:read"
+    - "mlflow:write"
+    - "feast:read"
+    - "feast:write"
+    - "modelcatalogue:read"
+    - "modelcatalogue:write"
+  
+# JWT Configuration
+jwt:
+  algorithm: "RS256"
+  public_key_url: "https://auth.yourcompany.com/realms/ml-platform/protocol/openid-connect/certs"
+  audience: "ml-platform"
+  issuer: "https://auth.yourcompany.com/realms/ml-platform"
+  token_expiry: 3600  # 1 hour
+  
+# Rate Limiting
+rate_limiting:
+  enabled: true
+  requests_per_minute: 1000
+  burst_size: 100
+  per_user_limit: 100
+  per_ip_limit: 500
+  
+# Service Routing
+services:
+  mlflow:
+    url: "http://mlflow:5000"
+    path_prefix: "/mlflow"
+    auth_required: true
+    scopes: ["mlflow:read", "mlflow:write"]
+    timeout: 30
+    retry_attempts: 3
+    health_check:
+      enabled: true
+      path: "/health"
+      interval: 30
+      
+  feast:
+    url: "http://feast:6566"
+    path_prefix: "/feast"
+    auth_required: true
+    scopes: ["feast:read", "feast:write"]
+    timeout: 30
+    retry_attempts: 3
+    health_check:
+      enabled: true
+      path: "/health"
+      interval: 30
+      
+  modelcatalogue:
+    url: "http://modelcatalogue:8080"
+    path_prefix: "/modelcatalogue"
+    auth_required: true
+    scopes: ["modelcatalogue:read", "modelcatalogue:write"]
+    timeout: 30
+    retry_attempts: 3
+    health_check:
+      enabled: true
+      path: "/health"
+      interval: 30
+      
+# CORS Configuration
+cors:
+  enabled: true
+  allowed_origins:
+    - "https://mlplatform.yourcompany.com"
+    - "https://mlflow.yourcompany.com"
+    - "https://feast.yourcompany.com"
+    - "https://modelcatalogue.yourcompany.com"
+  allowed_methods:
+    - "GET"
+    - "POST"
+    - "PUT"
+    - "DELETE"
+    - "OPTIONS"
+  allowed_headers:
+    - "Authorization"
+    - "Content-Type"
+    - "X-Requested-With"
+    - "X-User-ID"
+    - "X-Request-ID"
+    
+# Security Headers
+security:
+  headers:
+    - "X-Content-Type-Options: nosniff"
+    - "X-Frame-Options: DENY"
+    - "X-XSS-Protection: 1; mode=block"
+    - "Strict-Transport-Security: max-age=31536000; includeSubDomains"
+    
+# Logging
+logging:
+  level: "INFO"
+  format: "json"
+  access_logs: true
+  auth_logs: true
+  request_id: true
+  fields:
+    - "timestamp"
+    - "level"
+    - "message"
+    - "user_id"
+    - "request_id"
+    - "service"
+    - "method"
+    - "path"
+    - "status_code"
+    - "response_time"
+    
+# Monitoring
+monitoring:
+  metrics:
+    enabled: true
+    port: 9090
+    path: "/metrics"
+  health_check:
+    enabled: true
+    port: 8081
+    path: "/health"
+  tracing:
+    enabled: false  # Will be enabled in Phase 2 with OpenLineage
+    
+# Circuit Breaker
+circuit_breaker:
+  enabled: true
+  failure_threshold: 5
+  timeout: 60
+  reset_timeout: 30
+

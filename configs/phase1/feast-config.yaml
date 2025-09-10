@@ -1,0 +1,134 @@
+# Feast Feature Store Configuration for Phase 1
+# Production-grade configuration with Postgres + S3 backend
+
+# Feast Registry Configuration
+registry:
+  registry_type: "sql"
+  path: "postgresql://feast:${FEAST_DB_PASSWORD}@postgres:5432/feast_registry"
+  ssl_mode: "require"
+  
+# Provider Configuration
+provider: "aws"
+region: "us-west-2"
+
+# Online Store Configuration
+online_store:
+  type: "redis"
+  connection_string: "redis://redis:6379"
+  redis_type: "redis"
+  ssl: true
+  ssl_cert_reqs: "required"
+  
+# Offline Store Configuration  
+offline_store:
+  type: "postgres"
+  host: "postgres"
+  port: 5432
+  database: "feast_features"
+  user: "feast"
+  password: "${FEAST_DB_PASSWORD}"
+  ssl_mode: "require"
+  pool_size: 20
+  max_overflow: 30
+  
+# Feature Server Configuration
+feature_server:
+  host: "0.0.0.0"
+  port: 6566
+  workers: 4
+  timeout: 30
+  max_request_size: "10MB"
+  
+# Authentication
+auth:
+  type: "oauth"
+  oauth_provider: "http://api-gateway:8080/oauth"
+  client_id: "feast-client"
+  client_secret: "${FEAST_CLIENT_SECRET}"
+  
+# Feature Store Settings
+settings:
+  enable_feature_serving: true
+  enable_offline_store: true
+  enable_online_store: true
+  feature_serving_timeout: 30
+  offline_store_timeout: 300
+  feature_cache_ttl: 3600  # 1 hour
+  
+# Data Quality
+data_quality:
+  enabled: true
+  checks:
+    - "null_check"
+    - "range_check"
+    - "type_check"
+    - "uniqueness_check"
+  validation_timeout: 60
+  
+# Feature Versioning
+versioning:
+  enabled: true
+  schema_evolution: true
+  backward_compatibility: true
+  version_retention_days: 90
+  
+# Storage Configuration
+storage:
+  offline:
+    type: "s3"
+    bucket: "feast-offline-features"
+    prefix: "features"
+    region: "us-west-2"
+    s3_endpoint_url: "https://s3.us-west-2.amazonaws.com"
+    aws_access_key_id: "${AWS_ACCESS_KEY_ID}"
+    aws_secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
+    
+  online:
+    type: "redis"
+    connection_string: "redis://redis:6379"
+    key_prefix: "feast:features:"
+    ttl: 3600
+    
+# Monitoring
+monitoring:
+  metrics:
+    enabled: true
+    port: 9091
+    path: "/metrics"
+  health_check:
+    enabled: true
+    port: 6567
+    path: "/health"
+  logging:
+    level: "INFO"
+    format: "json"
+    access_logs: true
+    
+# Performance Tuning
+performance:
+  batch_size: 1000
+  max_workers: 10
+  connection_pool_size: 20
+  query_timeout: 300
+  cache_size: "1GB"
+  
+# Security
+security:
+  encryption:
+    enabled: true
+    algorithm: "AES-256-GCM"
+  access_control:
+    enabled: true
+    rbac: true
+  audit_logging:
+    enabled: true
+    log_level: "INFO"
+    
+# Backup and Recovery
+backup:
+  enabled: true
+  schedule: "0 2 * * *"  # Daily at 2 AM
+  retention_days: 30
+  s3_bucket: "feast-backups"
+  s3_prefix: "backups"
+
