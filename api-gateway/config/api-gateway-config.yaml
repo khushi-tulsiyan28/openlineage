@@ -1,0 +1,82 @@
+server:
+  host: "0.0.0.0"
+  port: 8080
+  workers: 4
+  timeout: 30
+  keep_alive: true
+
+entra_id:
+  tenant_id: "${ENTRA_TENANT_ID}"
+  client_id: "${ENTRA_CLIENT_ID}"
+  client_secret: "${ENTRA_CLIENT_SECRET}"
+  scopes:
+    - "openid"
+    - "profile"
+    - "email"
+    - "https://graph.microsoft.com/User.Read"
+  audience: "${ENTRA_AUDIENCE}"
+
+oauth:
+  redirect_uri: "${OAUTH_REDIRECT_URI}"
+  token_endpoint: "https://login.microsoftonline.com/${ENTRA_TENANT_ID}/oauth2/v2.0/token"
+  authorization_endpoint: "https://login.microsoftonline.com/${ENTRA_TENANT_ID}/oauth2/v2.0/authorize"
+
+services:
+  mlflow:
+    url: "http://mlflow:5000"
+    path_prefix: "/mlflow"
+    auth_required: true
+    timeout: 30
+    retry_attempts: 3
+
+rate_limiting:
+  enabled: true
+  requests_per_minute: 1000
+  burst_size: 100
+  per_user_limit: 100
+
+cors:
+  enabled: true
+  allowed_origins:
+    - "http://localhost:3000"
+    - "http://localhost:8080"
+    - "https://mlplatform.yourcompany.com"
+  allowed_methods:
+    - "GET"
+    - "POST"
+    - "PUT"
+    - "DELETE"
+    - "OPTIONS"
+  allowed_headers:
+    - "Authorization"
+    - "Content-Type"
+    - "X-Requested-With"
+    - "X-User-ID"
+    - "X-User-Email"
+    - "X-User-Name"
+    - "X-User-Groups"
+    - "X-User-Roles"
+
+security:
+  headers:
+    - "X-Content-Type-Options: nosniff"
+    - "X-Frame-Options: DENY"
+    - "X-XSS-Protection: 1; mode=block"
+    - "Strict-Transport-Security: max-age=31536000; includeSubDomains"
+
+logging:
+  level: "INFO"
+  format: "json"
+  access_logs: true
+  auth_logs: true
+  request_id: true
+
+monitoring:
+  metrics:
+    enabled: true
+    port: 9090
+    path: "/metrics"
+  health_check:
+    enabled: true
+    port: 8081
+    path: "/health"

@@ -70,6 +70,21 @@ cp configs/phase1/.env.example .env
 # Edit .env with your configuration
 ```
 
+### 2.1. Configure Entra ID Authentication (Required)
+
+The API Gateway now requires Microsoft Entra ID (Azure AD) authentication. Follow these steps:
+
+1. **Set up Entra ID App Registration** (see [Entra ID Setup Guide](docs/setup/ENTRA_ID_SETUP.md))
+2. **Configure environment variables**:
+   ```bash
+   # Add to your .env file
+   ENTRA_TENANT_ID=your-tenant-id
+   ENTRA_CLIENT_ID=your-client-id
+   ENTRA_CLIENT_SECRET=your-client-secret
+   ENTRA_AUDIENCE=api://your-client-id
+   OAUTH_REDIRECT_URI=http://localhost:8081/oauth/callback
+   ```
+
 ### 3. Start the Platform
 
 ```bash
