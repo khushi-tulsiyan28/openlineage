@@ -4,13 +4,13 @@ import logging
 import asyncio
 from typing import Optional, Dict, Any
 from datetime import datetime, timedelta
-
 import httpx
 import uvicorn
 from fastapi import FastAPI, HTTPException, Depends, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse
+from fastapi.openapi.utils import get_openapi
 from pydantic import BaseModel
 import jwt
 from jwt import PyJWKClient
@@ -42,12 +42,41 @@ class ExperimentAccess(BaseModel):
 
 app = FastAPI(title="MLOps API Gateway", version="1.0.0")
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://localhost:3001", "http://localhost:8080", "https://mlplatform.yourcompany.com"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 security = HTTPBearer()
 
 entra_config = None
 jwks_client = None
 user_sessions = {}
 experiment_permissions = {}
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    openapi_schema = get_openapi(
+        title="MLOps API Gateway",
+        version="1.0.0",
+        description="API Gateway for ML platform (Entra ID auth, MLflow/Feast proxy)",
+        routes=app.routes,
+    )
+    components = openapi_schema.setdefault("components", {})
+    security_schemes = components.setdefault("securitySchemes", {})
+    security_schemes["BearerAuth"] = {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+    }
+    openapi_schema["security"] = [{"BearerAuth": []}]
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+app.openapi = custom_openapi
 
 def load_config():
     global entra_config, jwks_client
@@ -165,16 +194,52 @@ async def forward_to_mlflow(request: Request, user: UserInfo, path: str):
             logger.error(f"MLflow request failed: {e}")
             raise HTTPException(status_code=502, detail="MLflow service unavailable")
 
+async def forward_to_feast(request: Request, user: UserInfo, path: str):
+    feast_url = os.getenv("FEAST_URL", "http://feast:6566")
+
+    headers = {
+        "Authorization": f"Bearer {user_sessions[user.user_id]['token']}",
+        "X-User-ID": user.user_id,
+        "X-User-Email": user.email,
+        "X-User-Name": user.name,
+        "X-User-Groups": ",".join(user.groups),
+        "X-User-Roles": ",".join(user.roles)
+    }
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.request(
+                method=request.method,
+                url=f"{feast_url}/{path}",
+                headers=headers,
+                content=await request.body(),
+                params=request.query_params,
+                timeout=30.0
+            )
+
+            return JSONResponse(
+                content=response.json() if response.headers.get("content-type", "").startswith("application/json") else {"data": response.text},
+                status_code=response.status_code,
+                headers=dict(response.headers)
+            )
+        except httpx.RequestError as e:
+            logger.error(f"Feast request failed: {e}")
+            raise HTTPException(status_code=502, detail="Feast service unavailable")
+
 @app.on_event("startup")
 async def startup_event():
     load_config()
 
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
-    if request.url.path.startswith("/health") or request.url.path.startswith("/docs"):
-        return await call_next(request)
-    
-    if request.url.path.startswith("/oauth"):
+    public_paths = (
+        "/health",
+        "/docs",
+        "/redoc",
+        "/openapi.json",
+        "/oauth",
+    )
+    if any(request.url.path.startswith(p) for p in public_paths):
         return await call_next(request)
     
     auth_header = request.headers.get("Authorization")
@@ -238,6 +303,42 @@ async def exchange_token(code: str, redirect_uri: str):
         except httpx.HTTPError as e:
             logger.error(f"Token exchange failed: {e}")
             raise HTTPException(status_code=400, detail="Token exchange failed")
+
+@app.get("/oauth/callback")
+async def oauth_callback(request: Request, code: Optional[str] = None, state: Optional[str] = None):
+    if not code:
+        raise HTTPException(status_code=400, detail="Missing authorization code")
+
+    redirect_uri = os.getenv("OAUTH_REDIRECT_URI", "http://localhost:8081/oauth/callback")
+    token_url = f"{entra_config.authority}/oauth2/v2.0/token"
+
+    data = {
+        "client_id": entra_config.client_id,
+        "client_secret": entra_config.client_secret,
+        "code": code,
+        "redirect_uri": redirect_uri,
+        "grant_type": "authorization_code"
+    }
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(token_url, data=data)
+            response.raise_for_status()
+            _ = response.json()
+            mlflow_home = os.getenv("MLFLOW_PUBLIC_URL", "http://localhost:5000")
+            return RedirectResponse(url=mlflow_home, status_code=302)
+        except httpx.HTTPError as e:
+            logger.error(f"Callback token exchange failed: {e}")
+            html = """
+            <html>
+              <head><title>Authorization Received</title></head>
+              <body style="font-family: -apple-system, Segoe UI, Roboto, sans-serif;">
+                <h2>⚠️ Authorization received but token exchange failed</h2>
+                <p>Please ensure the client secret value is correct and try again.</p>
+              </body>
+            </html>
+            """
+            return HTMLResponse(content=html, status_code=200)
 
 @app.get("/mlflow/experiments")
 async def list_experiments(user: UserInfo = Depends(verify_entra_token)):
@@ -313,6 +414,23 @@ async def set_experiment_permissions(
     )
     
     return {"message": "Permissions updated successfully"}
+
+@app.api_route("/mlflow/{full_path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
+async def proxy_mlflow(full_path: str, request: Request, user: UserInfo = Depends(verify_entra_token)):
+    return await forward_to_mlflow(request, user, full_path)
+
+@app.api_route("/mlflow", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
+async def proxy_mlflow_root(request: Request, user: UserInfo = Depends(verify_entra_token)):
+    return await forward_to_mlflow(request, user, "")
+
+# Feast catch-all proxy
+@app.api_route("/feast/{full_path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
+async def proxy_feast(full_path: str, request: Request, user: UserInfo = Depends(verify_entra_token)):
+    return await forward_to_feast(request, user, full_path)
+
+@app.api_route("/feast", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
+async def proxy_feast_root(request: Request, user: UserInfo = Depends(verify_entra_token)):
+    return await forward_to_feast(request, user, "")
 
 if __name__ == "__main__":
     uvicorn.run(

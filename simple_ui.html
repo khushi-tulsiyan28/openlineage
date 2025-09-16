@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MLOps API Gateway Test</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: white;
+        }
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        .section {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .section h2 {
+            margin-top: 0;
+            color: #ffd700;
+            border-bottom: 2px solid #ffd700;
+            padding-bottom: 10px;
+        }
+        button {
+            background: linear-gradient(45deg, #ff6b6b, #ee5a24);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            margin: 10px 5px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+        }
+        button:disabled {
+            background: #666;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .success {
+            background: linear-gradient(45deg, #00b894, #00a085);
+        }
+        .info {
+            background: linear-gradient(45deg, #74b9ff, #0984e3);
+        }
+        input, textarea {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            margin: 10px 0;
+            font-size: 14px;
+            background: rgba(255, 255, 255, 0.9);
+            color: #333;
+        }
+        .result {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+            padding: 15px;
+            margin: 10px 0;
+            font-family: 'Courier New', monospace;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 8px;
+            margin: 10px 0;
+            font-weight: bold;
+        }
+        .status.success {
+            background: rgba(0, 184, 148, 0.3);
+            border: 1px solid #00b894;
+        }
+        .status.error {
+            background: rgba(255, 107, 107, 0.3);
+            border: 1px solid #ff6b6b;
+        }
+        .status.info {
+            background: rgba(116, 185, 255, 0.3);
+            border: 1px solid #74b9ff;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top: 4px solid #fff;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 MLOps API Gateway Test</h1>
+        
+        <div class="section">
+            <h2>📊 System Status</h2>
+            <button onclick="checkHealth()" class="info">Check API Gateway Health</button>
+            <div id="healthResult" class="result" style="display: none;"></div>
+        </div>
+
+        <div class="section">
+            <h2>🔐 OAuth Authentication Flow</h2>
+            <p>Test the complete OAuth flow with Microsoft Entra ID:</p>
+            <button onclick="startOAuthFlow()" class="success">Start OAuth Login</button>
+            <div id="oauthResult" class="result" style="display: none;"></div>
+        </div>
+
+        <div class="section">
+            <h2>🛡️ Protected API Testing</h2>
+            <p>Test protected endpoints (requires valid token):</p>
+            <button onclick="testProtectedEndpoint('mlflow')" class="info">Test MLflow API</button>
+            <button onclick="testProtectedEndpoint('profile')" class="info">Test User Profile</button>
+            <div id="protectedResult" class="result" style="display: none;"></div>
+        </div>
+
+        <div class="section">
+            <h2>🔑 Manual Token Testing</h2>
+            <p>If you have a valid access token, test it here:</p>
+            <input type="text" id="accessToken" placeholder="Paste your access token here..." />
+            <button onclick="testWithToken()" class="success">Test with Token</button>
+            <div id="tokenResult" class="result" style="display: none;"></div>
+        </div>
+
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Processing...</p>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8081';
+        let currentToken = null;
+
+        function showLoading() {
+            document.getElementById('loading').style.display = 'block';
+        }
+
+        function hideLoading() {
+            document.getElementById('loading').style.display = 'none';
+        }
+
+        function showResult(elementId, content, type = 'info') {
+            const element = document.getElementById(elementId);
+            element.style.display = 'block';
+            element.innerHTML = content;
+            element.className = `result status ${type}`;
+        }
+
+        async function checkHealth() {
+            showLoading();
+            try {
+                const response = await fetch(`${API_BASE}/health`);
+                const data = await response.json();
+                showResult('healthResult', 
+                    `✅ API Gateway is healthy!\n\nStatus: ${data.status}\nTimestamp: ${data.timestamp}`, 
+                    'success'
+                );
+            } catch (error) {
+                showResult('healthResult', 
+                    `❌ Error: ${error.message}\n\nMake sure the API Gateway is running on port 8081`, 
+                    'error'
+                );
+            }
+            hideLoading();
+        }
+
+        async function startOAuthFlow() {
+            showLoading();
+            try {
+                const response = await fetch(`${API_BASE}/oauth/authorize`);
+                const data = await response.json();
+                
+                showResult('oauthResult', 
+                    `🔗 OAuth Authorization URL generated!\n\nClick the link below to start the login process:\n\n${data.authorization_url}\n\n⚠️ Note: After login, you'll be redirected to a callback URL. Copy the 'code' parameter from the URL and use it to get an access token.`, 
+                    'info'
+                );
+
+                // Open the authorization URL in a new tab
+                window.open(data.authorization_url, '_blank');
+                
+            } catch (error) {
+                showResult('oauthResult', 
+                    `❌ Error: ${error.message}`, 
+                    'error'
+                );
+            }
+            hideLoading();
+        }
+
+        async function testProtectedEndpoint(type) {
+            showLoading();
+            const endpoint = type === 'mlflow' ? '/mlflow/experiments' : '/user/profile';
+            const endpointName = type === 'mlflow' ? 'MLflow Experiments' : 'User Profile';
+            
+            try {
+                const response = await fetch(`${API_BASE}${endpoint}`);
+                const data = await response.json();
+                
+                if (response.status === 401) {
+                    showResult('protectedResult', 
+                        `🔒 ${endpointName} endpoint is protected!\n\nStatus: ${response.status} Unauthorized\nResponse: ${JSON.stringify(data, null, 2)}\n\n✅ This is expected behavior - the endpoint requires authentication.`, 
+                        'info'
+                    );
+                } else {
+                    showResult('protectedResult', 
+                        `✅ ${endpointName} endpoint responded!\n\nStatus: ${response.status}\nResponse: ${JSON.stringify(data, null, 2)}`, 
+                        'success'
+                    );
+                }
+            } catch (error) {
+                showResult('protectedResult', 
+                    `❌ Error testing ${endpointName}: ${error.message}`, 
+                    'error'
+                );
+            }
+            hideLoading();
+        }
+
+        async function testWithToken() {
+            const token = document.getElementById('accessToken').value.trim();
+            if (!token) {
+                showResult('tokenResult', '❌ Please enter an access token first!', 'error');
+                return;
+            }
+
+            showLoading();
+            currentToken = token;
+
+            try {
+                // Test user profile with token
+                const response = await fetch(`${API_BASE}/user/profile`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (response.status === 200) {
+                    showResult('tokenResult', 
+                        `✅ Token is valid!\n\nUser Profile:\n${JSON.stringify(data, null, 2)}`, 
+                        'success'
+                    );
+                } else {
+                    showResult('tokenResult', 
+                        `❌ Token validation failed!\n\nStatus: ${response.status}\nResponse: ${JSON.stringify(data, null, 2)}`, 
+                        'error'
+                    );
+                }
+            } catch (error) {
+                showResult('tokenResult', 
+                    `❌ Error: ${error.message}`, 
+                    'error'
+                );
+            }
+            hideLoading();
+        }
+
+        // Auto-check health on page load
+        window.onload = function() {
+            checkHealth();
+        };
+    </script>
+</body>
+</html>
