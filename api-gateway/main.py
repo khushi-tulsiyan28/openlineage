@@ -423,7 +423,6 @@ async def proxy_mlflow(full_path: str, request: Request, user: UserInfo = Depend
 async def proxy_mlflow_root(request: Request, user: UserInfo = Depends(verify_entra_token)):
     return await forward_to_mlflow(request, user, "")
 
-# Feast catch-all proxy
 @app.api_route("/feast/{full_path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
 async def proxy_feast(full_path: str, request: Request, user: UserInfo = Depends(verify_entra_token)):
     return await forward_to_feast(request, user, full_path)
@@ -431,6 +430,21 @@ async def proxy_feast(full_path: str, request: Request, user: UserInfo = Depends
 @app.api_route("/feast", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
 async def proxy_feast_root(request: Request, user: UserInfo = Depends(verify_entra_token)):
     return await forward_to_feast(request, user, "")
+
+@app.post("/feast/online-features")
+async def feast_online_features(request: Request, user: UserInfo = Depends(verify_entra_token)):
+    feast_url = os.getenv("FEAST_URL", "http://feast:6566")
+    payload = await request.json()
+    async with httpx.AsyncClient() as client:
+        try:
+            r = await client.post(f"{feast_url}/get-online-features", json=payload, headers={
+                "Authorization": f"Bearer {user_sessions[user.user_id]['token']}"
+            })
+            r.raise_for_status()
+            return JSONResponse(content=r.json(), status_code=r.status_code)
+        except httpx.HTTPError as e:
+            logger.error(f"Feast online-features failed: {e}")
+            raise HTTPException(status_code=502, detail="Feast service unavailable")
 
 if __name__ == "__main__":
     uvicorn.run(

@@ -83,6 +83,7 @@ services:
       ENTRA_AUDIENCE: ${ENTRA_AUDIENCE:-api://your-client-id}
       OAUTH_REDIRECT_URI: ${OAUTH_REDIRECT_URI:-http://localhost:8081/oauth/callback}
       MLFLOW_URL: http://mlflow:5000
+      FEAST_URL: ${FEAST_URL:-http://feast:6566}
     ports:
       - "8081:8080"
     volumes:
