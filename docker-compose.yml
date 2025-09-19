@@ -53,18 +53,39 @@ services:
 
   # MLflow UI (lightweight)
   mlflow:
-    image: python:3.9-slim
+    build:
+      context: ./mock-mlflow
+      dockerfile: Dockerfile
     ports:
       - "5000:5000"
-    command: >
-      bash -c "
-        pip install mlflow &&
-        mlflow ui --host 0.0.0.0 --port 5000
-      "
     networks:
       - mlops-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000"]
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Feast Feature Store
+  feast:
+    build:
+      context: ./feast-service
+      dockerfile: Dockerfile
+    environment:
+      FEAST_REGISTRY_PATH: postgresql://postgres:password@postgres:5432/feast_registry
+      FEAST_ONLINE_STORE_CONNECTION_STRING: redis://redis:6379
+      FEAST_OFFLINE_STORE_CONNECTION_STRING: postgresql://postgres:password@postgres:5432/feast_features
+    ports:
+      - "6566:6566"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - mlops-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6566/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -72,24 +93,20 @@ services:
   # API Gateway with Entra ID Authentication
   api-gateway:
     build:
-      context: ./api-gateway
+      context: ./nginx-gateway
       dockerfile: Dockerfile
     environment:
-      API_GATEWAY_PORT: 8080
-      API_GATEWAY_CONFIG_PATH: /app/config/api-gateway-config.yaml
-      ENTRA_TENANT_ID: ${ENTRA_TENANT_ID:-your-tenant-id}
-      ENTRA_CLIENT_ID: ${ENTRA_CLIENT_ID:-your-client-id}
-      ENTRA_CLIENT_SECRET: ${ENTRA_CLIENT_SECRET:-your-client-secret}
-      ENTRA_AUDIENCE: ${ENTRA_AUDIENCE:-api://your-client-id}
+      ENTRA_TENANT_ID: ${ENTRA_TENANT_ID:-5f892d7b-6294-4f75-aa09-20fb450b9bf2}
+      ENTRA_CLIENT_ID: ${ENTRA_CLIENT_ID:-1c3c2a07-a8a5-4358-883f-9030f73125e3}
+      ENTRA_CLIENT_SECRET: ${ENTRA_CLIENT_SECRET:-821236ef-db35-4c48-b5e9-9161190eef72}
+      ENTRA_AUDIENCE: ${ENTRA_AUDIENCE:-api://1c3c2a07-a8a5-4358-883f-9030f73125e3}
       OAUTH_REDIRECT_URI: ${OAUTH_REDIRECT_URI:-http://localhost:8081/oauth/callback}
-      MLFLOW_URL: http://mlflow:5000
-      FEAST_URL: ${FEAST_URL:-http://feast:6566}
+      MLFLOW_PUBLIC_URL: ${MLFLOW_PUBLIC_URL:-http://localhost:5000}
     ports:
       - "8081:8080"
-    volumes:
-      - ./api-gateway/config:/app/config
     depends_on:
       - mlflow
+      - feast
     networks:
       - mlops-network
     healthcheck:
