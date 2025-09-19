@@ -1,13 +1,10 @@
--- OAuth Token Exchange Endpoint
 local cjson = require "cjson"
 local http = require "resty.http"
 
--- Get environment variables
 local tenant_id = os.getenv("ENTRA_TENANT_ID") or "5f892d7b-6294-4f75-aa09-20fb450b9bf2"
 local client_id = os.getenv("ENTRA_CLIENT_ID") or "1c3c2a07-a8a5-4358-883f-9030f73125e3"
 local client_secret = os.getenv("ENTRA_CLIENT_SECRET") or "821236ef-db35-4c48-b5e9-9161190eef72"
 
--- Get parameters from query string
 local code = ngx.var.arg_code
 local redirect_uri = ngx.var.arg_redirect_uri or "http://localhost:8081/oauth/callback"
 
@@ -21,7 +18,6 @@ if not code then
     return
 end
 
--- Exchange code for token
 local httpc = http.new()
 local token_url = string.format("https://login.microsoftonline.com/%s/oauth2/v2.0/token", tenant_id)
 
@@ -50,6 +46,5 @@ if not res then
     return
 end
 
--- Return the token response
 ngx.header.content_type = "application/json"
 ngx.say(res.body)

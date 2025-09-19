@@ -1,4 +1,3 @@
--- OpenAPI Specification Endpoint
 local cjson = require "cjson"
 
 local openapi_spec = {

@@ -1,27 +1,23 @@
--- MLflow Response Filter for Experiment Access Control
 local cjson = require "cjson"
 
--- Mock experiment access control data (same as in experiment_access_control.lua)
 local experiment_access = {
     ["test-user"] = {
-        experiments = {"0", "1", "5", "8"},
+        experiments = {"0", "2"},
         permissions = {"read", "write"}
     },
     ["test-user-123"] = {
-        experiments = {"0", "1", "5", "8"},
+        experiments = {"0", "2"},
         permissions = {"read", "write"}
     },
     ["admin-user"] = {
-        experiments = {"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"},
+        experiments = {"0", "1", "2", "3"},
         permissions = {"read", "write", "admin"}
     },
     ["viewer-user"] = {
-        experiments = {"2", "7"},
+        experiments = {"1", "3"},
         permissions = {"read"}
     }
 }
-
--- Get user's accessible experiments
 local function get_user_experiments(user_id)
     local user_access = experiment_access[user_id]
     if not user_access then
@@ -30,7 +26,6 @@ local function get_user_experiments(user_id)
     return user_access.experiments
 end
 
--- Check if user has access to specific experiment
 local function has_experiment_access(user_id, experiment_id)
     local user_experiments = get_user_experiments(user_id)
     for _, exp_id in ipairs(user_experiments) do
@@ -41,7 +36,6 @@ local function has_experiment_access(user_id, experiment_id)
     return false
 end
 
--- Filter experiments list based on user access
 local function filter_experiments(user_id, experiments_response)
     local user_experiments = get_user_experiments(user_id)
     local accessible_experiments = {}
@@ -62,11 +56,9 @@ local function filter_experiments(user_id, experiments_response)
     return experiments_response
 end
 
--- Body filter to process MLflow responses
 local user_id = ngx.ctx.user_id
 local request_path = ngx.var.request_uri
 
--- Only filter MLflow responses
 if request_path:match("^/mlflow/") and user_id then
     local chunk, eof = ngx.arg[1], ngx.arg[2]
     
@@ -83,14 +75,11 @@ if request_path:match("^/mlflow/") and user_id then
         local success, response_data = pcall(cjson.decode, response_body)
         
         if success and response_data then
-            -- Handle different MLflow endpoints
             if request_path:match("/experiments") and not request_path:match("/experiments/%d+") then
-                -- Filter experiments list
                 if response_data.experiments then
                     response_data = filter_experiments(user_id, response_data)
                 end
             elseif request_path:match("/experiments/(%d+)") then
-                -- Check access to specific experiment
                 local experiment_id = request_path:match("/experiments/(%d+)")
                 if not has_experiment_access(user_id, experiment_id) then
                     response_data = {
@@ -99,7 +88,6 @@ if request_path:match("^/mlflow/") and user_id then
                     }
                 end
             elseif request_path:match("/runs") then
-                -- Filter runs based on experiment access
                 if response_data.runs then
                     local accessible_runs = {}
                     for _, run in ipairs(response_data.runs) do

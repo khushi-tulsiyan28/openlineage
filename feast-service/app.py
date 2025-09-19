@@ -1,7 +1,4 @@
 #!/usr/bin/env python3
-"""
-Mock Feast Feature Store Service
-"""
 import uvicorn
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse

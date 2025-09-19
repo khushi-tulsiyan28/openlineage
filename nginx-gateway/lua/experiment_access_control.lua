@@ -1,8 +1,5 @@
--- Experiment Access Control System
 local cjson = require "cjson"
 
--- Mock experiment access control data
--- In production, this would come from a database or external service
 local experiment_access = {
     ["test-user-123"] = {
         experiments = {"0", "1", "5", "8"},
@@ -18,7 +15,6 @@ local experiment_access = {
     }
 }
 
--- Get user's accessible experiments
 local function get_user_experiments(user_id)
     local user_access = experiment_access[user_id]
     if not user_access then
@@ -27,7 +23,6 @@ local function get_user_experiments(user_id)
     return user_access.experiments
 end
 
--- Check if user has access to specific experiment
 local function has_experiment_access(user_id, experiment_id)
     local user_experiments = get_user_experiments(user_id)
     for _, exp_id in ipairs(user_experiments) do
@@ -38,7 +33,6 @@ local function has_experiment_access(user_id, experiment_id)
     return false
 end
 
--- Filter experiments list based on user access
 local function filter_experiments(user_id, experiments_response)
     local user_experiments = get_user_experiments(user_id)
     local accessible_experiments = {}
@@ -59,7 +53,6 @@ local function filter_experiments(user_id, experiments_response)
     return experiments_response
 end
 
--- Store functions in nginx context for use in other scripts
 ngx.ctx.get_user_experiments = get_user_experiments
 ngx.ctx.has_experiment_access = has_experiment_access
 ngx.ctx.filter_experiments = filter_experiments
