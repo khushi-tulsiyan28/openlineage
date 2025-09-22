@@ -51,20 +51,7 @@ services:
       timeout: 10s
       retries: 3
 
-  # MLflow UI (lightweight)
-  mlflow:
-    build:
-      context: ./mock-mlflow
-      dockerfile: Dockerfile
-    ports:
-      - "5000:5000"
-    networks:
-      - mlops-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+  
 
   # Feast Feature Store
   feast:
@@ -105,7 +92,6 @@ services:
     ports:
       - "8081:8080"
     depends_on:
-      - mlflow
       - feast
     networks:
       - mlops-network
