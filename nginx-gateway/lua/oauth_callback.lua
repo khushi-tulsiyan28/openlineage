@@ -1,11 +1,11 @@
 local cjson = require "cjson"
 local http = require "resty.http"
 
-local tenant_id = os.getenv("ENTRA_TENANT_ID") or "5f892d7b-6294-4f75-aa09-20fb450b9bf2"
-local client_id = os.getenv("ENTRA_CLIENT_ID") or "1c3c2a07-a8a5-4358-883f-9030f73125e3"
-local client_secret = os.getenv("ENTRA_CLIENT_SECRET") or "821236ef-db35-4c48-b5e9-9161190eef72"
-local redirect_uri = os.getenv("OAUTH_REDIRECT_URI") or "http://localhost:8081/oauth/callback"
-local mlflow_url = os.getenv("MLFLOW_PUBLIC_URL") or "http://localhost:5000"
+local tenant_id = os.getenv("ENTRA_TENANT_ID")
+local client_id = os.getenv("ENTRA_CLIENT_ID")
+local client_secret = os.getenv("ENTRA_CLIENT_SECRET")
+local redirect_uri = os.getenv("OAUTH_REDIRECT_URI")
+local mlflow_url = os.getenv("MLFLOW_PUBLIC_URL")
 
 local code = ngx.var.arg_code
 if not code then
@@ -29,9 +29,9 @@ local res, err = httpc:request_uri(token_url, {
     body = string.format(
         "client_id=%s&client_secret=%s&code=%s&redirect_uri=%s&grant_type=authorization_code",
         client_id,
-        client_secret,
+        ngx.escape_uri(client_secret),
         ngx.escape_uri(code),
-        ngx.escape_uri(redirect_uri)
+        redirect_uri
     )
 })
 
@@ -50,12 +50,14 @@ if res.status ~= 200 then
     ngx.log(ngx.ERR, "Token exchange failed with status: ", res.status, " body: ", res.body)
     ngx.status = 400
     ngx.header.content_type = "text/html"
-    ngx.say([[
+    local safe_body = res.body or "{}"
+    ngx.say([[ 
         <html>
             <head><title>Authorization Failed</title></head>
-            <body style="font-family: -apple-system, Segoe UI, Roboto, sans-serif;">
+            <body style="font-family: -apple-system, Segoe UI, Roboto, sans-serif; max-width: 720px; margin: 40px auto;">
                 <h2>⚠️ Authorization failed</h2>
-                <p>Please check your credentials and try again.</p>
+                <p>Microsoft returned an error. Details below will help troubleshoot.</p>
+                <pre style="background:#f5f5f5; padding:12px; border-radius:8px; white-space:pre-wrap;">]] .. safe_body .. [[</pre>
             </body>
         </html>
     ]])
@@ -79,4 +81,70 @@ if not token_data.access_token then
     return
 end
 
-ngx.redirect(mlflow_url, 302)
+local cookie_attrs = {
+    "Path=/",
+    "HttpOnly",
+    "SameSite=Lax"
+}
+ngx.header["Set-Cookie"] = string.format("access_token=%s; %s", token_data.access_token, table.concat(cookie_attrs, "; "))
+
+local function decode_jwt_email(token)
+    local parts = {}
+    for part in string.gmatch(token or "", "[^%.]+") do table.insert(parts, part) end
+    if #parts ~= 3 then return nil end
+    local payload = parts[2]
+    local pad = 4 - (#payload % 4)
+    if pad ~= 4 then payload = payload .. string.rep("=", pad) end
+    local ok, json_payload = pcall(ngx.decode_base64, payload)
+    if not ok or not json_payload then return nil end
+    local ok2, obj = pcall(cjson.decode, json_payload)
+    if not ok2 or type(obj) ~= "table" then return nil end
+    return (obj.email or obj.preferred_username or obj.upn)
+end
+
+local user_email = (decode_jwt_email(token_data.access_token) or ""):lower()
+
+local experiment_access = {
+    ["kushit@techdwarfs.com"] = { experiments = {"381747126836502912", "663922813976858922"} }
+}
+
+local function get_allowed_ids()
+    local entry = experiment_access[user_email]
+    if not entry then return {} end
+    return entry.experiments or {}
+end
+
+local function fetch_all_experiments()
+    local httpc2 = http.new()
+    local url = "http://mlflow_backend/api/2.0/mlflow/experiments/search?max_results=1000"
+    local r, e = httpc2:request_uri(url, { method = "GET" })
+    if not r then return nil, e end
+    local ok, data = pcall(cjson.decode, r.body or "")
+    if not ok or type(data) ~= "table" then return {experiments={}}, nil end
+    if type(data.experiments) ~= "table" then data.experiments = {} end
+    return data, nil
+end
+
+local function to_set(arr)
+    local s = {}
+    for _, v in ipairs(arr or {}) do s[tostring(v)] = true end
+    return s
+end
+
+local all, ferr = fetch_all_experiments()
+if ferr then
+    ngx.status = 200
+    ngx.header.content_type = "application/json"
+    ngx.say(cjson.encode({ experiments = {}, next_page_token = cjson.null }))
+    return
+end
+
+local allowed = to_set(get_allowed_ids())
+local filtered = {}
+for _, exp in ipairs(all.experiments or {}) do
+    if allowed[tostring(exp.experiment_id)] then table.insert(filtered, exp) end
+end
+
+ngx.status = 200
+ngx.header.content_type = "application/json"
+ngx.say(cjson.encode({ experiments = filtered, next_page_token = cjson.null }))

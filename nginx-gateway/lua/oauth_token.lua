@@ -4,6 +4,7 @@ local http = require "resty.http"
 local tenant_id = os.getenv("ENTRA_TENANT_ID")
 local client_id = os.getenv("ENTRA_CLIENT_ID")
 local client_secret = os.getenv("ENTRA_CLIENT_SECRET")
+
 local code = ngx.var.arg_code
 local redirect_uri = ngx.var.arg_redirect_uri or "http://localhost:8081/oauth/callback"
 
@@ -28,9 +29,9 @@ local res, err = httpc:request_uri(token_url, {
     body = string.format(
         "client_id=%s&client_secret=%s&code=%s&redirect_uri=%s&grant_type=authorization_code",
         client_id,
-        client_secret,
+        ngx.escape_uri(client_secret),
         ngx.escape_uri(code),
-        ngx.escape_uri(redirect_uri)
+        redirect_uri
     )
 })
 
@@ -42,6 +43,14 @@ if not res then
         error = "token_exchange_failed",
         message = "Failed to exchange authorization code for token"
     }))
+    return
+end
+
+if res.status ~= 200 then
+    ngx.log(ngx.ERR, "Token exchange failed with status: ", res.status, " body: ", res.body)
+    ngx.status = 400
+    ngx.header.content_type = "application/json"
+    ngx.say(res.body)
     return
 end
 

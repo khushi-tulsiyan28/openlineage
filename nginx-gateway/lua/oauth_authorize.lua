@@ -3,16 +3,22 @@ local http = require "resty.http"
 
 local tenant_id = os.getenv("ENTRA_TENANT_ID")
 local client_id = os.getenv("ENTRA_CLIENT_ID")
-local redirect_uri = os.getenv("OAUTH_REDIRECT_URI") or "http://localhost:8081/oauth/callback"
+local redirect_uri = os.getenv("OAUTH_REDIRECT_URI")
+local audience = os.getenv("ENTRA_AUDIENCE")
+
+local scope = string.format("openid offline_access %s/user_impersonation", audience)
 
 local auth_url = string.format(
-    "https://login.microsoftonline.com/%s/oauth2/v2.0/authorize?client_id=%s&response_type=code&redirect_uri=%s&scope=openid profile email https://graph.microsoft.com/User.Read&response_mode=query",
+    "https://login.microsoftonline.com/%s/oauth2/v2.0/authorize?client_id=%s&response_type=code&redirect_uri=%s&scope=%s&response_mode=query",
     tenant_id,
     client_id,
-    ngx.escape_uri(redirect_uri)
+    ngx.escape_uri(redirect_uri),
+    ngx.escape_uri(scope)
 )
 
+if ngx.var.arg_redirect == "1" then
+    return ngx.redirect(auth_url, 302)
+end
+
 ngx.header.content_type = "application/json"
-ngx.say(cjson.encode({
-    authorization_url = auth_url
-}))
+ngx.say(cjson.encode({ authorization_url = auth_url }))
