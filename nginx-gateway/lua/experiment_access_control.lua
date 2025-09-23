@@ -1,6 +1,11 @@
 local cjson = require "cjson"
+cjson.encode_empty_table_as_object(false)
 
 local experiment_access = {
+    ["KushiT@techdwarfs.com"] = {
+        experiments = {"381747126836502912", "663922813976858922"},
+        permissions = {"read", "write"}
+    },
     ["test-user-123"] = {
         experiments = {"0", "1", "5", "8"},
         permissions = {"read", "write"}
@@ -16,7 +21,15 @@ local experiment_access = {
 }
 
 local function get_user_experiments(user_id)
-    local user_access = experiment_access[user_id]
+    local uid_lc = string.lower(user_id or "")
+    local mapped = {}
+    for k, v in pairs(experiment_access) do
+        if string.lower(k) == uid_lc then
+            mapped = v
+            break
+        end
+    end
+    local user_access = mapped
     if not user_access then
         return {}
     end

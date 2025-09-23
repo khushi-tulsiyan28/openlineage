@@ -1,21 +1,30 @@
 local cjson = require "cjson"
 
 local auth_header = ngx.var.http_authorization
+local token_from_cookie = nil
 if not auth_header then
-    ngx.status = 401
-    ngx.say(cjson.encode({
-        error = "unauthorized",
-        message = "Authorization header required"
-    }))
-    return
+    local cookie_header = ngx.var.http_cookie or ""
+    token_from_cookie = cookie_header:match("access_token=([^;]+)")
+    if not token_from_cookie then
+        ngx.status = 401
+        ngx.say(cjson.encode({
+            error = "unauthorized",
+            message = "Authorization header or session cookie required"
+        }))
+        return
+    end
 end
 
-local token = auth_header:match("Bearer%s+(.+)")
+local token = nil
+if auth_header then
+    token = auth_header:match("Bearer%s+(.+)")
+end
+token = token or token_from_cookie
 if not token then
     ngx.status = 401
     ngx.say(cjson.encode({
         error = "unauthorized",
-        message = "Bearer token required"
+        message = "Bearer token or session cookie required"
     }))
     return
 end
@@ -60,9 +69,9 @@ if not success2 then
     return
 end
 
-local user_id = payload.sub or "test-user-123"
-local user_email = payload.email or "test@example.com"
-local user_name = payload.name or "Test User"
+local user_id = payload.sub or payload.preferred_username or payload.upn or payload.email or "test-user-123"
+local user_email = payload.email or payload.preferred_username or payload.upn or "test@example.com"
+local user_name = payload.name or payload.preferred_username or payload.upn or "Test User"
 
 ngx.ctx.user_id = user_id
 ngx.ctx.user_email = user_email

@@ -1,9 +1,14 @@
 local cjson = require "cjson"
+cjson.encode_empty_table_as_object(false)
 
 local experiment_access = {
-    ["test-user"] = {
-        experiments = {"0", "2"},
+    ["KushiT@techdwarfs.com"] = {
+        experiments = {"381747126836502912", "663922813976858922"},
         permissions = {"read", "write"}
+    },
+    ["luke.c@entra.ai"] = {
+        experiments = {"381747126836502912", "663922813976858922"},
+        permissions = {"read", "write", "admin"}
     },
     ["test-user-123"] = {
         experiments = {"0", "2"},
@@ -18,8 +23,15 @@ local experiment_access = {
         permissions = {"read"}
     }
 }
+
+local experiment_access_lc = {}
+for user_key, access in pairs(experiment_access) do
+    experiment_access_lc[string.lower(user_key)] = access
+end
 local function get_user_experiments(user_id)
-    local user_access = experiment_access[user_id]
+    local uid_lc = string.lower(user_id or "")
+    local email_lc = string.lower(ngx.ctx.user_email or "")
+    local user_access = experiment_access_lc[uid_lc] or experiment_access_lc[email_lc]
     if not user_access then
         return {}
     end
@@ -76,8 +88,19 @@ if request_path:match("^/mlflow/") and user_id then
         
         if success and response_data then
             if request_path:match("/experiments") and not request_path:match("/experiments/%d+") then
-                if response_data.experiments then
-                    response_data = filter_experiments(user_id, response_data)
+                if type(response_data) ~= "table" then
+                    response_data = {}
+                end
+                if type(response_data.experiments) ~= "table" then
+                    response_data.experiments = {}
+                end
+                response_data = filter_experiments(user_id, response_data)
+                if response_data.next_page_token == nil then
+                    response_data.next_page_token = cjson.null
+                end
+                if type(response_data.experiments) ~= "table" or next(response_data.experiments) == nil then
+                    ngx.arg[1] = cjson.encode({ experiments = {}, next_page_token = cjson.null })
+                    return
                 end
             elseif request_path:match("/experiments/(%d+)") then
                 local experiment_id = request_path:match("/experiments/(%d+)")
@@ -101,6 +124,8 @@ if request_path:match("^/mlflow/") and user_id then
             end
             
             ngx.arg[1] = cjson.encode(response_data)
+        else
+            ngx.arg[1] = response_body
         end
     else
         ngx.arg[1] = nil
