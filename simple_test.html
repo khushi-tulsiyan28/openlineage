@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Gateway Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .result {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 10px 0;
+            white-space: pre-wrap;
+            font-family: monospace;
+        }
+        .success { border-color: #28a745; background: #d4edda; }
+        .error { border-color: #dc3545; background: #f8d7da; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 API Gateway Test</h1>
+        
+        <h2>1. Health Check</h2>
+        <button onclick="testHealth()">Check Health</button>
+        <div id="health" class="result"></div>
+        
+        <h2>2. OAuth Authorization</h2>
+        <button onclick="getAuthUrl()">Get OAuth URL</button>
+        <div id="oauth" class="result"></div>
+        
+        <h2>3. Protected Endpoint Test</h2>
+        <button onclick="testProtected()">Test MLflow API</button>
+        <div id="protected" class="result"></div>
+        
+        <h2>4. Manual OAuth Flow</h2>
+        <p>Click the button above to get the OAuth URL, then:</p>
+        <ol>
+            <li>Copy the URL and open it in a new tab</li>
+            <li>Complete the Microsoft login</li>
+            <li>Copy the 'code' parameter from the callback URL</li>
+            <li>Paste it below and test token exchange</li>
+        </ol>
+        <input type="text" id="authCode" placeholder="Paste authorization code here..." style="width: 100%; padding: 10px; margin: 10px 0;">
+        <button onclick="exchangeToken()">Exchange Token</button>
+        <div id="token" class="result"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8081';
+        
+        function showResult(elementId, content, type = '') {
+            const element = document.getElementById(elementId);
+            element.textContent = content;
+            element.className = `result ${type}`;
+        }
+        
+        async function testHealth() {
+            try {
+                const response = await fetch(`${API_BASE}/health`);
+                const data = await response.json();
+                showResult('health', `✅ Health Check Success!\n\nStatus: ${data.status}\nTimestamp: ${data.timestamp}`, 'success');
+            } catch (error) {
+                showResult('health', `❌ Error: ${error.message}\n\nMake sure API Gateway is running on port 8081`, 'error');
+            }
+        }
+        
+        async function getAuthUrl() {
+            try {
+                const response = await fetch(`${API_BASE}/oauth/authorize`);
+                const data = await response.json();
+                showResult('oauth', `✅ OAuth URL Generated!\n\n${data.authorization_url}\n\nClick this link to start login:`, 'success');
+                
+                // Create a clickable link
+                const link = document.createElement('a');
+                link.href = data.authorization_url;
+                link.target = '_blank';
+                link.textContent = '🔗 Open OAuth Login';
+                link.style.display = 'block';
+                link.style.marginTop = '10px';
+                link.style.padding = '10px';
+                link.style.background = '#28a745';
+                link.style.color = 'white';
+                link.style.textDecoration = 'none';
+                link.style.borderRadius = '5px';
+                
+                document.getElementById('oauth').appendChild(link);
+            } catch (error) {
+                showResult('oauth', `❌ Error: ${error.message}`, 'error');
+            }
+        }
+        
+        async function testProtected() {
+            try {
+                const response = await fetch(`${API_BASE}/mlflow/experiments`);
+                const data = await response.json();
+                if (response.status === 401) {
+                    showResult('protected', `✅ Protected Endpoint Working!\n\nStatus: ${response.status} Unauthorized\nResponse: ${JSON.stringify(data, null, 2)}\n\nThis is expected - endpoint requires authentication.`, 'success');
+                } else {
+                    showResult('protected', `✅ Endpoint Response!\n\nStatus: ${response.status}\nResponse: ${JSON.stringify(data, null, 2)}`, 'success');
+                }
+            } catch (error) {
+                showResult('protected', `❌ Error: ${error.message}`, 'error');
+            }
+        }
+        
+        async function exchangeToken() {
+            const code = document.getElementById('authCode').value.trim();
+            if (!code) {
+                showResult('token', '❌ Please enter an authorization code first!', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/oauth/token?code=${encodeURIComponent(code)}&redirect_uri=http://localhost:8081/oauth/callback`, {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                
+                if (response.status === 200) {
+                    showResult('token', `✅ Token Exchange Success!\n\n${JSON.stringify(data, null, 2)}`, 'success');
+                } else {
+                    showResult('token', `❌ Token Exchange Failed!\n\nStatus: ${response.status}\nResponse: ${JSON.stringify(data, null, 2)}`, 'error');
+                }
+            } catch (error) {
+                showResult('token', `❌ Error: ${error.message}`, 'error');
+            }
+        }
+        
+        // Auto-test health on page load
+        window.onload = function() {
+            testHealth();
+        };
+    </script>
+</body>
+</html>

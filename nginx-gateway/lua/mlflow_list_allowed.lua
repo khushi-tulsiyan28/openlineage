@@ -40,7 +40,7 @@ end
 
 local function fetch_all_experiments()
     local httpc = http.new()
-    local url = "http://mlflow_backend/api/2.0/mlflow/experiments/search?max_results=1000"
+    local url = "http://172.18.0.9:5000/api/2.0/mlflow/experiments/search?max_results=1000"
     local res, err = httpc:request_uri(url, { method = "GET" })
     if not res then return nil, err end
     local ok, data = pcall(cjson.decode, res.body or "")

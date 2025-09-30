@@ -43,6 +43,7 @@ end
 function M.get_allowed_experiments(email)
     local policy = M.load_policy()
     local entry = policy[string.lower(email or "")] or {}
+    ngx.log(ngx.ERR, "Policy lookup for email: ", email, " -> experiments: ", cjson.encode(entry.experiments or {}))
     return entry.experiments or {}
 end
 

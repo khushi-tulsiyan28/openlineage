@@ -26,7 +26,7 @@ end
 local function proxy_to_backend()
     local httpc = http.new()
     local path = ngx.var.request_uri:gsub("^/mlflow/", "/")
-    local url = "http://mlflow_backend" .. path
+    local url = "http://172.18.0.9:5000" .. path
     local res, err = httpc:request_uri(url, { method = "GET" })
     if not res then
         ngx.status = 502
