@@ -13,7 +13,7 @@ local function get_access_token()
     return from_cookie
 end
 
-local function decode_user_email(token)
+local function decode_claims(token)
     if not token then return nil end
     local parts = {}
     for p in token:gmatch("[^%.]+") do table.insert(parts, p) end
@@ -25,11 +25,11 @@ local function decode_user_email(token)
     if not ok or not json_payload then return nil end
     local ok2, obj = pcall(cjson.decode, json_payload)
     if not ok2 or type(obj) ~= "table" then return nil end
-    return (obj.email or obj.preferred_username or obj.upn)
+    return obj
 end
 
-local function get_allowed_ids(email)
-    return policy.get_allowed_experiments(email)
+local function get_allowed_ids_union(email, groups)
+    return policy.get_allowed_experiments_union(email, groups)
 end
 
 local function to_set(arr)
@@ -57,8 +57,13 @@ if not token then
     return
 end
 
-local email = decode_user_email(token)
-local allowed = to_set(get_allowed_ids(email))
+local claims = decode_claims(token) or {}
+local email = ((claims.email or claims.preferred_username or claims.upn) or ""):lower()
+local groups = {}
+if type(claims.groups) == "table" then
+    for _, gid in ipairs(claims.groups) do table.insert(groups, tostring(gid)) end
+end
+local allowed = to_set(get_allowed_ids_union(email, groups))
 
 local all, ferr = fetch_all_experiments()
 if ferr then

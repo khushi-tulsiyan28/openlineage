@@ -90,3 +90,33 @@ curl -s \
 - `/mlflow`: `{ experiments: [...], next_page_token: null }`
 
 
+### Group-Based Access Control
+- The gateway now supports user- and group-based permissions. A user's allowed experiments are the union of:
+  - Experiments mapped to their email, and
+  - Experiments mapped to any Entra ID groups present in their token's `groups` claim.
+
+- Policy file location: `nginx-gateway/policy/experiment_access.json`
+
+- Supported schema:
+```json
+{
+  "users": {
+    "user@example.com": { "experiments": ["1", "2"] }
+  },
+  "groups": {
+    "<group-object-id>": { "experiments": ["2", "3"] }
+  }
+}
+```
+
+- Notes
+  - Email keys are matched case-insensitively.
+  - Group keys are Entra ID group object IDs as strings.
+  - If tokens contain `hasgroups` instead of `groups` (overage), the gateway cannot resolve groups automatically. Ensure the app registration issues the `groups` claim or extend the gateway to call Microsoft Graph.
+
+- Verify groups in your token via:
+```bash
+curl -s -H "Authorization: Bearer <ACCESS_TOKEN>" http://localhost:8081/oauth/me | jq '.user.groups'
+```
+
+

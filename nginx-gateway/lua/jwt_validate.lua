@@ -72,9 +72,18 @@ end
 local user_id = payload.sub or payload.preferred_username or payload.upn or payload.email or "test-user-123"
 local user_email = payload.email or payload.preferred_username or payload.upn or "test@example.com"
 local user_name = payload.name or payload.preferred_username or payload.upn or "Test User"
+local user_groups_tbl = {}
+if type(payload.groups) == "table" then
+    for _, gid in ipairs(payload.groups) do
+        table.insert(user_groups_tbl, tostring(gid))
+    end
+elseif payload.hasgroups == true or payload.hasgroups == "true" then
+    -- Large group overage; downstream may need to query Graph. Keep marker only.
+    user_groups_tbl = { "<overage>" }
+end
 
 ngx.ctx.user_id = user_id
 ngx.ctx.user_email = user_email
 ngx.ctx.user_name = user_name
-ngx.ctx.user_groups = cjson.encode({"users", "mlflow-users"})
+ngx.ctx.user_groups = cjson.encode(user_groups_tbl)
 ngx.ctx.user_roles = cjson.encode({"user", "mlflow-reader"})

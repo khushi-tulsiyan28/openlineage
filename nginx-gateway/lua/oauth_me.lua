@@ -27,8 +27,8 @@ local function decode_claims(token)
     return obj
 end
 
-local function allowed_ids(email)
-    return policy.get_allowed_experiments(email)
+local function allowed_ids_union(email, groups)
+    return policy.get_allowed_experiments_union(email, groups)
 end
 
 local function fetch_all_experiments()
@@ -58,8 +58,12 @@ end
 
 local claims = decode_claims(token)
 local email = (claims.email or claims.preferred_username or claims.upn or ""):lower()
+local groups = {}
+if type(claims.groups) == "table" then
+    for _, gid in ipairs(claims.groups) do table.insert(groups, tostring(gid)) end
+end
 
-local allowed = to_set(allowed_ids(email))
+local allowed = to_set(allowed_ids_union(email, groups))
 local all, ferr = fetch_all_experiments()
 local filtered = {}
 if not ferr then
@@ -76,7 +80,8 @@ ngx.say(cjson.encode({
         email = email,
         name = claims.name,
         tid = claims.tid,
-        aud = claims.aud
+        aud = claims.aud,
+        groups = claims.groups
     },
     experiments = filtered,
     next_page_token = cjson.null

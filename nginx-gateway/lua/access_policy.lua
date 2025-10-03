@@ -21,30 +21,73 @@ function M.load_policy()
     if not ok or type(data) ~= "table" then
         return {}
     end
-    -- Normalize keys to lowercase and values to string arrays
-    local normalized = {}
-    for key, value in pairs(data) do
-        local email_lc = string.lower(tostring(key))
-        local experiments = {}
-        if type(value) == "table" and type(value.experiments) == "table" then
-            for _, id in ipairs(value.experiments) do
-                table.insert(experiments, tostring(id))
+    -- Support two schemas:
+    -- 1) Legacy: { "user@example.com": { "experiments": ["1","2"] }, ... }
+    -- 2) New: { "users": { email -> {experiments} }, "groups": { groupId -> {experiments} } }
+
+    local normalized = { users = {}, groups = {} }
+
+    local function normalize_subject_table(src, dst)
+        for key, value in pairs(src or {}) do
+            local subject_key = string.lower(tostring(key))
+            local experiments = {}
+            if type(value) == "table" and type(value.experiments) == "table" then
+                for _, id in ipairs(value.experiments) do
+                    table.insert(experiments, tostring(id))
+                end
+            elseif type(value) == "table" then
+                for _, id in ipairs(value) do
+                    table.insert(experiments, tostring(id))
+                end
             end
-        elseif type(value) == "table" then
-            for _, id in ipairs(value) do
-                table.insert(experiments, tostring(id))
-            end
+            dst[subject_key] = { experiments = experiments }
         end
-        normalized[email_lc] = { experiments = experiments }
     end
+
+    if data.users or data.groups then
+        normalize_subject_table(data.users or {}, normalized.users)
+        normalize_subject_table(data.groups or {}, normalized.groups)
+    else
+        -- Legacy: treat top-level keys as users map
+        normalize_subject_table(data, normalized.users)
+    end
+
     return normalized
 end
 
+-- Backward-compatible API: email-based lookup only
 function M.get_allowed_experiments(email)
     local policy = M.load_policy()
-    local entry = policy[string.lower(email or "")] or {}
-    ngx.log(ngx.ERR, "Policy lookup for email: ", email, " -> experiments: ", cjson.encode(entry.experiments or {}))
+    local entry = (policy.users or {})[string.lower(email or "")] or {}
+    ngx.log(ngx.ERR, "Policy lookup (user) for email=", email, " -> ", cjson.encode(entry.experiments or {}))
     return entry.experiments or {}
+end
+
+-- New API: union experiments from user email and groups
+function M.get_allowed_experiments_union(email, groups)
+    local policy = M.load_policy()
+    local result_set = {}
+
+    -- user
+    local user_entry = (policy.users or {})[string.lower(email or "")] or {}
+    for _, id in ipairs(user_entry.experiments or {}) do
+        result_set[tostring(id)] = true
+    end
+
+    -- groups
+    if type(groups) == "table" then
+        for _, gid in ipairs(groups) do
+            local ge = (policy.groups or {})[string.lower(tostring(gid))] or {}
+            for _, id in ipairs(ge.experiments or {}) do
+                result_set[tostring(id)] = true
+            end
+        end
+    end
+
+    local result = {}
+    for id, _ in pairs(result_set) do table.insert(result, id) end
+    ngx.log(ngx.ERR, "Policy union for email=", email, ", groups=", cjson.encode(groups or {}), " -> ", cjson.encode(result))
+    return result
 end
 
 return M
