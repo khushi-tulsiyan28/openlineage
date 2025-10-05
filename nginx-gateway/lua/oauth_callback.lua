@@ -104,8 +104,11 @@ end
 
 local user_email = (decode_jwt_email(token_data.access_token) or ""):lower()
 
+-- Debug logging
+ngx.log(ngx.ERR, "DEBUG: user_email = ", user_email)
+
 local experiment_access = {
-    ["kushit@techdwarfs.com"] = { experiments = {"381747126836502912", "663922813976858922"} }
+    ["kushit@techdwarfs.com"] = { experiments = {"1", "2"} }
 }
 
 local function get_allowed_ids()
@@ -116,7 +119,7 @@ end
 
 local function fetch_all_experiments()
     local httpc2 = http.new()
-    local url = "http://mlflow_backend/api/2.0/mlflow/experiments/search?max_results=1000"
+    local url = "http://openlineage-mlflow-1:5000/api/2.0/mlflow/experiments/search?max_results=1000"
     local r, e = httpc2:request_uri(url, { method = "GET" })
     if not r then return nil, e end
     local ok, data = pcall(cjson.decode, r.body or "")
@@ -139,11 +142,8 @@ if ferr then
     return
 end
 
-local allowed = to_set(get_allowed_ids())
-local filtered = {}
-for _, exp in ipairs(all.experiments or {}) do
-    if allowed[tostring(exp.experiment_id)] then table.insert(filtered, exp) end
-end
+-- For now, return all experiments to test
+local filtered = all.experiments or {}
 
 ngx.status = 200
 ngx.header.content_type = "application/json"

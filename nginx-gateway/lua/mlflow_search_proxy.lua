@@ -5,7 +5,7 @@ cjson.encode_empty_table_as_object(false)
 
 local experiment_access = {
     ["kushit@techdwarfs.com"] = {
-        experiments = {"381747126836502912", "663922813976858922"}
+        experiments = {"1", "2"}
     }
 }
 
@@ -26,7 +26,7 @@ end
 local function proxy_to_backend()
     local httpc = http.new()
     local path = ngx.var.request_uri:gsub("^/mlflow/", "/")
-    local url = "http://172.18.0.9:5000" .. path
+    local url = "http://openlineage-mlflow-1:5000" .. path
     local res, err = httpc:request_uri(url, { method = "GET" })
     if not res then
         ngx.status = 502

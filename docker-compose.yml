@@ -151,7 +151,7 @@ services:
     networks:
       - mlops-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/2.0/mlflow/experiments/search?max_results=1"]
       interval: 30s
       timeout: 10s
       retries: 3

@@ -6,7 +6,7 @@ local client_id = os.getenv("ENTRA_CLIENT_ID")
 local redirect_uri = os.getenv("OAUTH_REDIRECT_URI")
 local audience = os.getenv("ENTRA_AUDIENCE")
 
-local scope = string.format("openid offline_access %s/user_impersonation", audience)
+local scope = "openid profile email"
 
 local auth_url = string.format(
     "https://login.microsoftonline.com/%s/oauth2/v2.0/authorize?client_id=%s&response_type=code&redirect_uri=%s&scope=%s&response_mode=query",
