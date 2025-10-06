@@ -12,12 +12,23 @@ local function safe_read_file(path)
     return content
 end
 
+local function strip_bom_and_trim(s)
+    if type(s) ~= "string" then return "" end
+    local bom = string.char(0xEF, 0xBB, 0xBF)
+    if s:sub(1, 3) == bom then
+        s = s:sub(4)
+    end
+    s = s:match("^%s*(.-)%s*$") or s
+    return s
+end
+
 function M.load_policy()
     local content, err = safe_read_file(POLICY_PATH)
     if not content then
         return {}
     end
-    local ok, data = pcall(cjson.decode, content)
+    local cleaned = strip_bom_and_trim(content)
+    local ok, data = pcall(cjson.decode, cleaned)
     if not ok or type(data) ~= "table" then
         return {}
     end
@@ -52,6 +63,8 @@ function M.load_policy()
         normalize_subject_table(data, normalized.users)
     end
 
+    ngx.log(ngx.ERR, "DEBUG policy loaded users=", cjson.encode(normalized.users or {}),
+        " groups=", cjson.encode(normalized.groups or {}))
     return normalized
 end
 

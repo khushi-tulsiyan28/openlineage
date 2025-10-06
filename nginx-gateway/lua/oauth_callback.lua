@@ -142,8 +142,13 @@ if ferr then
     return
 end
 
--- For now, return all experiments to test
-local filtered = all.experiments or {}
+local allowed = to_set(get_allowed_ids())
+local filtered = {}
+for _, exp in ipairs(all.experiments or {}) do
+    if allowed[tostring(exp.experiment_id)] then
+        table.insert(filtered, exp)
+    end
+end
 
 ngx.status = 200
 ngx.header.content_type = "application/json"
