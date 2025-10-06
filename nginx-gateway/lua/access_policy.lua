@@ -32,9 +32,6 @@ function M.load_policy()
     if not ok or type(data) ~= "table" then
         return {}
     end
-    -- Support two schemas:
-    -- 1) Legacy: { "user@example.com": { "experiments": ["1","2"] }, ... }
-    -- 2) New: { "users": { email -> {experiments} }, "groups": { groupId -> {experiments} } }
 
     local normalized = { users = {}, groups = {} }
 
@@ -59,7 +56,6 @@ function M.load_policy()
         normalize_subject_table(data.users or {}, normalized.users)
         normalize_subject_table(data.groups or {}, normalized.groups)
     else
-        -- Legacy: treat top-level keys as users map
         normalize_subject_table(data, normalized.users)
     end
 
@@ -68,7 +64,6 @@ function M.load_policy()
     return normalized
 end
 
--- Backward-compatible API: email-based lookup only
 function M.get_allowed_experiments(email)
     local policy = M.load_policy()
     local entry = (policy.users or {})[string.lower(email or "")] or {}
@@ -76,18 +71,15 @@ function M.get_allowed_experiments(email)
     return entry.experiments or {}
 end
 
--- New API: union experiments from user email and groups
 function M.get_allowed_experiments_union(email, groups)
     local policy = M.load_policy()
     local result_set = {}
 
-    -- user
     local user_entry = (policy.users or {})[string.lower(email or "")] or {}
     for _, id in ipairs(user_entry.experiments or {}) do
         result_set[tostring(id)] = true
     end
 
-    -- groups
     if type(groups) == "table" then
         for _, gid in ipairs(groups) do
             local ge = (policy.groups or {})[string.lower(tostring(gid))] or {}

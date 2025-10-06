@@ -71,6 +71,30 @@ do
     for _, gid in ipairs(groups or {}) do table.insert(norm, tostring(gid)) end
     groups = norm
 end
+-- Optional hard gate via header only: X-Required-Group-Id can be a single id or comma-separated list
+local header_required = ngx.var.http_x_required_group_id
+if not header_required or #header_required == 0 then
+    ngx.status = 401
+    ngx.header.content_type = "application/json"
+    ngx.say(cjson.encode({ error = "unauthorized", message = "Missing X-Required-Group-Id header" }))
+    return
+end
+
+local required_set = {}
+for token in tostring(header_required):gmatch("[^,]+") do
+    local trimmed = token:match("^%s*(.-)%s*$")
+    if trimmed and #trimmed > 0 then required_set[string.lower(trimmed)] = true end
+end
+local user_set = {}
+for _, gid in ipairs(groups or {}) do user_set[string.lower(gid)] = true end
+local ok_member = false
+for req in pairs(required_set) do if user_set[req] then ok_member = true; break end end
+if not ok_member then
+    ngx.status = 401
+    ngx.header.content_type = "application/json"
+    ngx.say(cjson.encode({ error = "unauthorized", message = "User not in required group(s)", required_groups = required_set }))
+    return
+end
 ngx.log(ngx.ERR, "DEBUG oauth_me: resolved_groups_count=", tostring(#(groups or {})), ", token_groups_present=", tostring(type(claims.groups) == "table" and #(claims.groups) > 0))
 
 local allowed_user = policy.get_allowed_experiments(email)
